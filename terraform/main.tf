@@ -80,7 +80,7 @@ module "eks_gateway" {
   public_subnets = module.vpc_gateway.public_subnets
 
   # Use existing IAM roles - cannot create or manage IAM resources
-  cluster_service_role_arn       = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksServiceRole"
+  cluster_service_role_arn       = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksClusterRole"
   fargate_pod_execution_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AmazonEKSFargatePodExecutionRole"
 
   security_group_rules = {
@@ -106,7 +106,7 @@ module "eks_backend" {
   subnet_ids = module.vpc_backend.private_subnets
 
   # Use existing IAM roles - cannot create or manage IAM resources
-  cluster_service_role_arn       = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksServiceRole"
+  cluster_service_role_arn       = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksClusterRole"
   fargate_pod_execution_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AmazonEKSFargatePodExecutionRole"
 
   security_group_rules = {
