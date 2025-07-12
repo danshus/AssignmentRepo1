@@ -15,7 +15,7 @@ variable "vpc_id" {
 }
 
 variable "subnet_ids" {
-  description = "List of subnet IDs for the EKS cluster"
+  description = "List of subnet IDs for the EKS cluster (must be private subnets for Fargate)"
   type        = list(string)
 }
 
@@ -30,22 +30,9 @@ variable "cluster_service_role_arn" {
   type        = string
 }
 
-variable "node_group_role_arn" {
-  description = "ARN of existing IAM role for EKS node groups (required - cannot create roles)"
+variable "fargate_pod_execution_role_arn" {
+  description = "ARN of existing IAM role for Fargate pod execution (required - cannot create roles)"
   type        = string
-}
-
-variable "node_groups" {
-  description = "Map of EKS node groups"
-  type = map(object({
-    desired_capacity = number
-    max_capacity     = number
-    min_capacity     = number
-    instance_types   = list(string)
-    capacity_type    = string
-    labels           = map(string)
-  }))
-  default = {}
 }
 
 variable "security_group_rules" {

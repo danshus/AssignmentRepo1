@@ -68,7 +68,7 @@ module "vpc_peering" {
   route_table_ids_2 = module.vpc_backend.private_route_table_ids
 }
 
-# EKS Cluster for Gateway
+# EKS Cluster for Gateway (Fargate)
 module "eks_gateway" {
   source = "./modules/eks"
 
@@ -80,38 +80,22 @@ module "eks_gateway" {
   public_subnets = module.vpc_gateway.public_subnets
 
   # Use existing IAM roles - cannot create or manage IAM resources
-  cluster_service_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksServiceRole"
-  node_group_role_arn      = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/NodeInstanceRole"
-
-  node_groups = {
-    gateway = {
-      desired_capacity = 2
-      max_capacity     = 4
-      min_capacity     = 1
-
-      instance_types = ["t3.medium"]
-      capacity_type  = "ON_DEMAND"
-
-      labels = {
-        Environment = "production"
-        Application = "gateway"
-      }
-    }
-  }
+  cluster_service_role_arn       = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksServiceRole"
+  fargate_pod_execution_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AmazonEKSFargatePodExecutionRole"
 
   security_group_rules = {
     ingress_gateway = {
       type        = "ingress"
-      from_port   = 30080
-      to_port     = 30080
+      from_port   = 80
+      to_port     = 80
       protocol    = "tcp"
       cidr_blocks = ["10.1.0.0/16"]
-      description = "Gateway NodePort access"
+      description = "Gateway HTTP access"
     }
   }
 }
 
-# EKS Cluster for Backend
+# EKS Cluster for Backend (Fargate)
 module "eks_backend" {
   source = "./modules/eks"
 
@@ -122,24 +106,8 @@ module "eks_backend" {
   subnet_ids = module.vpc_backend.private_subnets
 
   # Use existing IAM roles - cannot create or manage IAM resources
-  cluster_service_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksServiceRole"
-  node_group_role_arn      = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/NodeInstanceRole"
-
-  node_groups = {
-    backend = {
-      desired_capacity = 2
-      max_capacity     = 4
-      min_capacity     = 1
-
-      instance_types = ["t3.medium"]
-      capacity_type  = "ON_DEMAND"
-
-      labels = {
-        Environment = "production"
-        Application = "backend"
-      }
-    }
-  }
+  cluster_service_role_arn       = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksServiceRole"
+  fargate_pod_execution_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AmazonEKSFargatePodExecutionRole"
 
   security_group_rules = {
     ingress_backend = {

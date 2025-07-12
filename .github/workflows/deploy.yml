@@ -31,6 +31,7 @@ env:
   AWS_REGION: us-west-1
   TF_VERSION: "1.12.2"
   KUBECTL_VERSION: "1.32.0"  # Aligned with EKS cluster version
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID || '721500739616' }}  # Default to known account ID
 
 permissions:
   contents: read
@@ -245,24 +246,86 @@ jobs:
     - name: Deploy Gateway proxy
       run: kubectl apply -f kubernetes/gateway/
       
+    - name: Deploy AWS Load Balancer Controller
+      run: |
+        # Install AWS Load Balancer Controller
+        kubectl apply -k "github.com/aws/eks-charts/stable/aws-load-balancer-controller//crds?ref=master"
+        
+        # Create service account with IRSA
+        kubectl create serviceaccount aws-load-balancer-controller -n kube-system --dry-run=client -o yaml | kubectl apply -f -
+        kubectl annotate serviceaccount aws-load-balancer-controller -n kube-system \
+          eks.amazonaws.com/role-arn=arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/AmazonEKSLoadBalancerControllerRole \
+          --overwrite
+        
+        # Install the controller
+        curl -o aws-load-balancer-controller.yaml https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases/download/v2.4.4/v2_4_4_full.yaml
+        sed -i 's/your-cluster-name/eks-gateway/g' aws-load-balancer-controller.yaml
+        kubectl apply -f aws-load-balancer-controller.yaml
+        
+        # Wait for controller to be ready
+        kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=300s
+      
+    - name: Wait for Fargate pods to be scheduled
+      run: |
+        echo "Waiting for Fargate pods to be scheduled..."
+        sleep 30
+        
     - name: Wait for Backend deployment
-      run: kubectl rollout status deployment/backend-service -n backend --timeout=300s
-      
+      run: |
+        echo "Waiting for Backend deployment to be ready..."
+        kubectl rollout status deployment/backend-service -n backend --timeout=600s
+        
     - name: Wait for Gateway deployment
-      run: kubectl rollout status deployment/proxy-service -n gateway --timeout=300s
-      
+      run: |
+        echo "Waiting for Gateway deployment to be ready..."
+        kubectl rollout status deployment/proxy-service -n gateway --timeout=600s
+        
+    - name: Wait for ALB to be created
+      run: |
+        echo "Waiting for ALB to be created by AWS Load Balancer Controller..."
+        for i in {1..30}; do
+          ALB_URL=$(kubectl get ingress proxy-ingress -n gateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+          if [ -n "$ALB_URL" ]; then
+            echo "ALB is ready: $ALB_URL"
+            break
+          fi
+          echo "Waiting for ALB... ($i/30)"
+          sleep 30
+        done
+        
+    - name: Verify Fargate scheduling
+      run: |
+        echo "Verifying pods are running on Fargate nodes..."
+        kubectl get pods -n gateway -o wide
+        kubectl get pods -n backend -o wide
+        kubectl get pods -n kube-system -o wide
+        
     - name: Test connectivity
       run: |
-        # Get the ALB URL from Terraform output
-        cd terraform
-        ALB_URL=$(terraform output -raw gateway_alb_dns_name)
+        # Get the ALB URL from Ingress resource
+        ALB_URL=$(kubectl get ingress proxy-ingress -n gateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
         echo "ALB URL: $ALB_URL"
         
-        # Wait for ALB to be ready
-        sleep 60
+        if [ -z "$ALB_URL" ]; then
+          echo "❌ ALB URL not found in Ingress resource"
+          exit 1
+        fi
         
-        # Test the connection
-        curl -f http://$ALB_URL/ || exit 1
+        # Wait for ALB to be ready and targets to be healthy
+        echo "Waiting for ALB to be ready..."
+        sleep 120
+        
+        # Test the connection with retry logic
+        echo "Testing connectivity..."
+        for i in {1..5}; do
+          if curl -f -m 30 http://$ALB_URL/; then
+            echo "✅ Connectivity test passed!"
+            break
+          else
+            echo "❌ Attempt $i failed, retrying in 30 seconds..."
+            sleep 30
+          fi
+        done
 
   notify:
     name: Notify Deployment Status
@@ -275,7 +338,7 @@ jobs:
       if: needs.deploy-applications.result == 'success'
       run: |
         echo "✅ Deployment successful!"
-        echo "Infrastructure deployed successfully to AWS"
+        echo "Infrastructure deployed successfully to AWS with Fargate"
         
     - name: Notify failure
       if: needs.deploy-applications.result == 'failure'
