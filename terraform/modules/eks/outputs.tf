@@ -22,22 +22,22 @@ output "cluster_version" {
 
 output "cluster_iam_role_name" {
   description = "The name of the IAM role for the EKS cluster"
-  value       = aws_iam_role.cluster.name
+  value       = var.cluster_service_role_arn != "" ? split("/", var.cluster_service_role_arn)[1] : aws_iam_role.cluster[0].name
 }
 
 output "cluster_iam_role_arn" {
   description = "The ARN of the IAM role for the EKS cluster"
-  value       = aws_iam_role.cluster.arn
+  value       = local.cluster_role_arn
 }
 
 output "node_iam_role_name" {
   description = "The name of the IAM role for the EKS node groups"
-  value       = aws_iam_role.node.name
+  value       = var.node_group_role_arn != "" ? split("/", var.node_group_role_arn)[1] : aws_iam_role.node[0].name
 }
 
 output "node_iam_role_arn" {
   description = "The ARN of the IAM role for the EKS node groups"
-  value       = aws_iam_role.node.arn
+  value       = local.node_role_arn
 }
 
 output "cluster_security_group_id" {
