@@ -1,7 +1,7 @@
 # EKS Cluster
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
-  role_arn = aws_iam_role.cluster.arn
+  role_arn = local.cluster_role_arn
   version  = var.cluster_version
 
   vpc_config {
@@ -13,10 +13,7 @@ resource "aws_eks_cluster" "main" {
 
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
-  depends_on = [
-    aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
-    aws_iam_role_policy_attachment.cluster_AmazonEKSVPCResourceController,
-  ]
+  # No dependencies needed since we're using existing roles
 }
 
 # EKS Node Groups
@@ -25,7 +22,7 @@ resource "aws_eks_node_group" "main" {
 
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = each.key
-  node_role_arn   = aws_iam_role.node.arn
+  node_role_arn   = local.node_role_arn
   subnet_ids      = var.subnet_ids
   version         = var.cluster_version
 
@@ -45,16 +42,22 @@ resource "aws_eks_node_group" "main" {
 
   labels = each.value.labels
 
-  depends_on = [
-    aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
-    aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly,
-  ]
+  # No dependencies needed since we're using existing roles
 }
 
-# IAM Role for EKS Cluster
+# Use existing IAM roles instead of creating new ones
+# This works around IAM permission limitations in constrained environments
+
+# Use provided role ARNs or create minimal roles if needed
+locals {
+  cluster_role_arn = var.cluster_service_role_arn != "" ? var.cluster_service_role_arn : aws_iam_role.cluster[0].arn
+  node_role_arn    = var.node_group_role_arn != "" ? var.node_group_role_arn : aws_iam_role.node[0].arn
+}
+
+# Conditional IAM role creation (only if ARNs not provided)
 resource "aws_iam_role" "cluster" {
-  name = "${var.cluster_name}-cluster-role"
+  count = var.cluster_service_role_arn == "" ? 1 : 0
+  name  = "${var.cluster_name}-cluster-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -70,9 +73,9 @@ resource "aws_iam_role" "cluster" {
   })
 }
 
-# IAM Role for EKS Node Groups
 resource "aws_iam_role" "node" {
-  name = "${var.cluster_name}-node-role"
+  count = var.node_group_role_arn == "" ? 1 : 0
+  name  = "${var.cluster_name}-node-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -88,31 +91,35 @@ resource "aws_iam_role" "node" {
   })
 }
 
-# IAM Role Policy Attachments for Cluster
+# Conditional policy attachments
 resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSClusterPolicy" {
+  count      = var.cluster_service_role_arn == "" ? 1 : 0
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-  role       = aws_iam_role.cluster.name
+  role       = aws_iam_role.cluster[0].name
 }
 
 resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSVPCResourceController" {
+  count      = var.cluster_service_role_arn == "" ? 1 : 0
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
-  role       = aws_iam_role.cluster.name
+  role       = aws_iam_role.cluster[0].name
 }
 
-# IAM Role Policy Attachments for Nodes
 resource "aws_iam_role_policy_attachment" "node_AmazonEKSWorkerNodePolicy" {
+  count      = var.node_group_role_arn == "" ? 1 : 0
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-  role       = aws_iam_role.node.name
+  role       = aws_iam_role.node[0].name
 }
 
 resource "aws_iam_role_policy_attachment" "node_AmazonEKS_CNI_Policy" {
+  count      = var.node_group_role_arn == "" ? 1 : 0
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-  role       = aws_iam_role.node.name
+  role       = aws_iam_role.node[0].name
 }
 
 resource "aws_iam_role_policy_attachment" "node_AmazonEC2ContainerRegistryReadOnly" {
+  count      = var.node_group_role_arn == "" ? 1 : 0
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-  role       = aws_iam_role.node.name
+  role       = aws_iam_role.node[0].name
 }
 
 # Security Group for EKS Cluster

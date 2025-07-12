@@ -50,3 +50,15 @@ variable "security_group_rules" {
   }))
   default = {}
 }
+
+variable "cluster_service_role_arn" {
+  description = "ARN of existing IAM role for EKS cluster service"
+  type        = string
+  default     = ""
+}
+
+variable "node_group_role_arn" {
+  description = "ARN of existing IAM role for EKS node groups"
+  type        = string
+  default     = ""
+}

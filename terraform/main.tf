@@ -22,6 +22,8 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+data "aws_caller_identity" "current" {}
+
 # VPC Module for Gateway
 module "vpc_gateway" {
   source = "./modules/vpc"
@@ -77,6 +79,10 @@ module "eks_gateway" {
   subnet_ids     = module.vpc_gateway.private_subnets
   public_subnets = module.vpc_gateway.public_subnets
 
+  # Leave empty to try creating roles first, provide ARNs if IAM permissions are restricted
+  # cluster_service_role_arn = "arn:aws:iam::ACCOUNT_ID:role/existing-eks-service-role"
+  # node_group_role_arn      = "arn:aws:iam::ACCOUNT_ID:role/existing-nodegroup-role"
+
   node_groups = {
     gateway-nodes = {
       desired_capacity = 2
@@ -114,6 +120,10 @@ module "eks_backend" {
 
   vpc_id     = module.vpc_backend.vpc_id
   subnet_ids = module.vpc_backend.private_subnets
+
+  # Leave empty to try creating roles first, provide ARNs if IAM permissions are restricted  
+  # cluster_service_role_arn = "arn:aws:iam::ACCOUNT_ID:role/existing-eks-service-role"
+  # node_group_role_arn      = "arn:aws:iam::ACCOUNT_ID:role/existing-nodegroup-role"
 
   node_groups = {
     backend-nodes = {
