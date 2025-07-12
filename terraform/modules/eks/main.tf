@@ -1,7 +1,7 @@
 # EKS Cluster
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
-  role_arn = local.cluster_role_arn
+  role_arn = var.cluster_service_role_arn
   version  = var.cluster_version
 
   vpc_config {
@@ -12,8 +12,6 @@ resource "aws_eks_cluster" "main" {
   }
 
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
-
-  # No dependencies needed since we're using existing roles
 }
 
 # EKS Node Groups
@@ -22,7 +20,7 @@ resource "aws_eks_node_group" "main" {
 
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = each.key
-  node_role_arn   = local.node_role_arn
+  node_role_arn   = var.node_group_role_arn
   subnet_ids      = var.subnet_ids
   version         = var.cluster_version
 
@@ -41,85 +39,6 @@ resource "aws_eks_node_group" "main" {
   }
 
   labels = each.value.labels
-
-  # No dependencies needed since we're using existing roles
-}
-
-# Use existing IAM roles instead of creating new ones
-# This works around IAM permission limitations in constrained environments
-
-# Use provided role ARNs or create minimal roles if needed
-locals {
-  cluster_role_arn = var.cluster_service_role_arn != "" ? var.cluster_service_role_arn : aws_iam_role.cluster[0].arn
-  node_role_arn    = var.node_group_role_arn != "" ? var.node_group_role_arn : aws_iam_role.node[0].arn
-}
-
-# Conditional IAM role creation (only if ARNs not provided)
-resource "aws_iam_role" "cluster" {
-  count = var.cluster_service_role_arn == "" ? 1 : 0
-  name  = "${var.cluster_name}-cluster-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "eks.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role" "node" {
-  count = var.node_group_role_arn == "" ? 1 : 0
-  name  = "${var.cluster_name}-node-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-# Conditional policy attachments
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSClusterPolicy" {
-  count      = var.cluster_service_role_arn == "" ? 1 : 0
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-  role       = aws_iam_role.cluster[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSVPCResourceController" {
-  count      = var.cluster_service_role_arn == "" ? 1 : 0
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
-  role       = aws_iam_role.cluster[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "node_AmazonEKSWorkerNodePolicy" {
-  count      = var.node_group_role_arn == "" ? 1 : 0
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-  role       = aws_iam_role.node[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "node_AmazonEKS_CNI_Policy" {
-  count      = var.node_group_role_arn == "" ? 1 : 0
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-  role       = aws_iam_role.node[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "node_AmazonEC2ContainerRegistryReadOnly" {
-  count      = var.node_group_role_arn == "" ? 1 : 0
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-  role       = aws_iam_role.node[0].name
 }
 
 # Security Group for EKS Cluster
@@ -254,9 +173,9 @@ resource "aws_lb_listener" "gateway_listener" {
   }
 }
 
-# Use auto-scaling group target instead of individual instances
+# Autoscaling Group Attachment for Gateway ALB
 resource "aws_autoscaling_attachment" "gateway_asg_attachment" {
-  count                  = var.cluster_name == "eks-gateway" ? length(var.node_groups) : 0
-  autoscaling_group_name = aws_eks_node_group.main[keys(var.node_groups)[count.index]].resources[0].autoscaling_groups[0].name
+  count                  = var.cluster_name == "eks-gateway" ? 1 : 0
+  autoscaling_group_name = aws_eks_node_group.main["gateway"].resources[0].autoscaling_groups[0].name
   lb_target_group_arn    = aws_lb_target_group.gateway_tg[0].arn
 } 

@@ -25,6 +25,16 @@ variable "public_subnets" {
   default     = []
 }
 
+variable "cluster_service_role_arn" {
+  description = "ARN of existing IAM role for EKS cluster service (required - cannot create roles)"
+  type        = string
+}
+
+variable "node_group_role_arn" {
+  description = "ARN of existing IAM role for EKS node groups (required - cannot create roles)"
+  type        = string
+}
+
 variable "node_groups" {
   description = "Map of EKS node groups"
   type = map(object({
@@ -49,16 +59,4 @@ variable "security_group_rules" {
     description = string
   }))
   default = {}
-}
-
-variable "cluster_service_role_arn" {
-  description = "ARN of existing IAM role for EKS cluster service"
-  type        = string
-  default     = ""
-}
-
-variable "node_group_role_arn" {
-  description = "ARN of existing IAM role for EKS node groups"
-  type        = string
-  default     = ""
 }

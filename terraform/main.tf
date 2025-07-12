@@ -79,34 +79,34 @@ module "eks_gateway" {
   subnet_ids     = module.vpc_gateway.private_subnets
   public_subnets = module.vpc_gateway.public_subnets
 
-  # Leave empty to try creating roles first, provide ARNs if IAM permissions are restricted
-  # cluster_service_role_arn = "arn:aws:iam::ACCOUNT_ID:role/existing-eks-service-role"
-  # node_group_role_arn      = "arn:aws:iam::ACCOUNT_ID:role/existing-nodegroup-role"
+  # Use existing IAM roles - cannot create or manage IAM resources
+  cluster_service_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksServiceRole"
+  node_group_role_arn      = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/NodeInstanceRole"
 
   node_groups = {
-    gateway-nodes = {
+    gateway = {
       desired_capacity = 2
       max_capacity     = 4
       min_capacity     = 1
 
-      instance_types = ["t3.micro"]
+      instance_types = ["t3.medium"]
       capacity_type  = "ON_DEMAND"
 
       labels = {
-        Environment = "gateway"
-        NodeGroup   = "gateway-nodes"
+        Environment = "production"
+        Application = "gateway"
       }
     }
   }
 
   security_group_rules = {
-    ingress_nodes_443 = {
-      description = "Node groups security group"
-      protocol    = "tcp"
-      from_port   = 443
-      to_port     = 443
+    ingress_gateway = {
       type        = "ingress"
-      cidr_blocks = ["0.0.0.0/0"]
+      from_port   = 30080
+      to_port     = 30080
+      protocol    = "tcp"
+      cidr_blocks = ["10.1.0.0/16"]
+      description = "Gateway NodePort access"
     }
   }
 }
@@ -121,35 +121,34 @@ module "eks_backend" {
   vpc_id     = module.vpc_backend.vpc_id
   subnet_ids = module.vpc_backend.private_subnets
 
-  # Leave empty to try creating roles first, provide ARNs if IAM permissions are restricted  
-  # cluster_service_role_arn = "arn:aws:iam::ACCOUNT_ID:role/existing-eks-service-role"
-  # node_group_role_arn      = "arn:aws:iam::ACCOUNT_ID:role/existing-nodegroup-role"
+  # Use existing IAM roles - cannot create or manage IAM resources
+  cluster_service_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eksServiceRole"
+  node_group_role_arn      = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/NodeInstanceRole"
 
   node_groups = {
-    backend-nodes = {
+    backend = {
       desired_capacity = 2
       max_capacity     = 4
       min_capacity     = 1
 
-      instance_types = ["t3.micro"]
+      instance_types = ["t3.medium"]
       capacity_type  = "ON_DEMAND"
 
       labels = {
-        Environment = "backend"
-        NodeGroup   = "backend-nodes"
+        Environment = "production"
+        Application = "backend"
       }
     }
   }
 
-  # Restrict backend cluster to only accept traffic from gateway cluster
   security_group_rules = {
-    ingress_from_gateway = {
-      description = "Allow traffic from gateway EKS nodes"
-      protocol    = "tcp"
-      from_port   = 80
-      to_port     = 80
+    ingress_backend = {
       type        = "ingress"
-      cidr_blocks = [var.gateway_vpc_cidr]
+      from_port   = 8080
+      to_port     = 8080
+      protocol    = "tcp"
+      cidr_blocks = ["10.1.0.0/16"]
+      description = "Backend service access from gateway"
     }
   }
 } 
